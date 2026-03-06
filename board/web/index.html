@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Factorio with AI Board</title>
+    <link rel="stylesheet" href="./app.css">
+    <script src="./app.js" defer></script>
+  </head>
+  <body>
+    <div class="shell">
+      <header class="hero">
+        <div class="hero-row">
+          <div class="hero-title-block">
+            <h1>Factorio with AI Kanban</h1>
+          </div>
+          <section class="summary-strip hero-summary">
+            <article class="summary-card">
+              <span class="summary-label">Updated</span>
+              <strong id="updated-at">-</strong>
+            </article>
+            <article class="summary-card">
+              <span class="summary-label">Cards</span>
+              <strong id="card-count">0</strong>
+            </article>
+          </section>
+          <div class="hero-actions">
+            <button id="reload-button" class="secondary-button" type="button">Reload</button>
+            <button id="save-button" class="primary-button" type="button">Save Now</button>
+            <div id="save-status" class="save-status">Loading...</div>
+          </div>
+        </div>
+      </header>
+
+      <main class="layout">
+        <section id="board" class="board" aria-label="Kanban board"></section>
+        <aside class="inspector">
+          <div id="inspector-empty" class="inspector-empty">
+            <h2>Card Inspector</h2>
+            <p>カードを選ぶと、タイトルや詳細を編集できます。</p>
+          </div>
+
+          <form id="inspector-form" class="inspector-form" hidden>
+            <h2 id="inspector-heading">Card Inspector</h2>
+
+            <div class="inspector-id-row">
+              <div class="field">
+                <span>Card ID</span>
+                <div id="inspector-card-id" class="inspector-id-value">-</div>
+              </div>
+              <button id="copy-card-id" class="secondary-button" type="button">Copy ID</button>
+            </div>
+
+            <label class="field">
+              <span>Title</span>
+              <input id="field-title" name="title" type="text" autocomplete="off">
+            </label>
+
+            <label class="field">
+              <span>Tags</span>
+              <input id="field-tags" name="tags" type="text" placeholder="mvp, bot, infra">
+            </label>
+
+            <label class="field">
+              <span>Links</span>
+              <input id="field-links" name="links" type="text" placeholder="plan.md, notes/...">
+            </label>
+
+            <label class="field">
+              <span>Description</span>
+              <textarea id="field-description" name="description" rows="12"></textarea>
+            </label>
+
+            <div class="inspector-actions">
+              <button id="duplicate-card" class="secondary-button" type="button">Duplicate</button>
+              <button id="delete-card" class="danger-button" type="button">Delete</button>
+            </div>
+          </form>
+        </aside>
+      </main>
+    </div>
+  </body>
+</html>

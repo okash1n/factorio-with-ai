@@ -66,6 +66,39 @@ Useful commands:
 ./scripts/launchd_server.sh uninstall
 ```
 
+## Local Board
+Run the local Kanban UI:
+
+```bash
+./scripts/start_board.sh
+```
+
+Default URL:
+`http://127.0.0.1:8127`
+
+Notes:
+- Board layout is stored in `board/board.json`
+- Task cards are stored in `board/cards/00001.md` style Markdown files
+- The browser UI supports drag-and-drop between columns
+- Card edits are saved back to the repository JSON via the local Python server
+- Card ID is numeric in the UI, and semantic keys are stored inside each card Markdown file
+- `key:` may be blank when you add a card; the server fills it on save without renaming the file
+
+Run the board via launchd:
+
+```bash
+./scripts/launchd_board.sh start
+```
+
+Useful commands:
+
+```bash
+./scripts/launchd_board.sh status
+./scripts/launchd_board.sh logs
+./scripts/launchd_board.sh stop
+./scripts/launchd_board.sh uninstall
+```
+
 ## Environment Variables
 - `FACTORIO_BIN`: override Factorio binary path
 - `RCON_PORT`: default `27015`

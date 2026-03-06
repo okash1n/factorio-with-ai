@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ "${FWAI_SKIP_BOARD_HOOK:-0}" == "1" ]]; then
+  exit 0
+fi
+
+ROOT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
+cd "$ROOT_DIR"
+
+mapfile -t staged_files < <(git diff --cached --name-only --diff-filter=ACMR)
+if [[ "${#staged_files[@]}" -eq 0 ]]; then
+  exit 0
+fi
+
+needs_board_update=0
+board_touched=0
+cards_touched=0
+
+for path in "${staged_files[@]}"; do
+  case "$path" in
+    controller/*|mod/*|configs/*|plan.md)
+      needs_board_update=1
+      ;;
+  esac
+  case "$path" in
+    board/cards/*.md|board/board.json)
+      board_touched=1
+      ;;
+  esac
+  case "$path" in
+    board/cards/*.md)
+      cards_touched=1
+      ;;
+  esac
+done
+
+if [[ "$cards_touched" -eq 1 ]]; then
+  "$ROOT_DIR/scripts/refresh_board.sh" >/dev/null
+  git add board/board.json
+fi
+
+if [[ "$needs_board_update" -eq 1 && "$board_touched" -eq 0 ]]; then
+  cat >&2 <<'EOF'
+[fwai-board-hook] 実装や plan に変更がありますが、board が更新されていません。
+
+関連する board/cards/*.md を更新して、必要なら完了済みタスクを done へ移してください。
+この check を一時的に無効化する場合だけ、FWAI_SKIP_BOARD_HOOK=1 を付けて commit してください。
+EOF
+  exit 1
+fi

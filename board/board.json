@@ -1,0 +1,26 @@
+{
+  "title": "Factorio with AI Board",
+  "updated_at": "2026-03-06T21:31:06+09:00",
+  "columns": [
+    {
+      "id": "backlog",
+      "title": "目標とバックログ"
+    },
+    {
+      "id": "next",
+      "title": "次にやる"
+    },
+    {
+      "id": "in-progress",
+      "title": "進行中"
+    },
+    {
+      "id": "blocked",
+      "title": "詰まり中"
+    },
+    {
+      "id": "done",
+      "title": "完了"
+    }
+  ]
+}

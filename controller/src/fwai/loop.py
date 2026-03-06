@@ -2,14 +2,14 @@ from __future__ import annotations
 
 import json
 import time
-import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from .bridge_commands import health, observe, act
 from .config import ControllerConfig
 from .constraints import validate_action
-from .protocol import Action, encode_json_base64, parse_rcon_json
+from .protocol import Action
 from .rcon_client import RCONClient
 
 
@@ -22,18 +22,18 @@ class ControllerLoop:
 
     def run(self) -> None:
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
-        health = self._command_json("fwai.health", {})
-        self._log_event("health", {"response": health})
+        health_response = health(self.client)
+        self._log_event("health", {"response": health_response})
 
         step = 0
         while self.config.iterations == 0 or step < self.config.iterations:
-            observe_request = {
-                "v": 1,
-                "request_id": str(uuid.uuid4()),
-                "player_index": self.config.player_index,
-                "radius": 48,
-            }
-            observation = self._command_json("fwai.observe", observe_request)
+            observation = observe(
+                self.client,
+                player_index=self.config.player_index,
+                radius=48,
+                max_entities=64,
+                ensure_bot=True,
+            )
 
             event: dict[str, Any] = {
                 "step": step,
@@ -52,13 +52,7 @@ class ControllerLoop:
                 event["constraint"] = {"allowed": constraint.allowed, "reason": constraint.reason}
 
                 if constraint.allowed:
-                    act_request = {
-                        "v": 1,
-                        "request_id": str(uuid.uuid4()),
-                        "player_index": self.config.player_index,
-                        "action": {"type": action.type, "params": action.params},
-                    }
-                    act_response = self._command_json("fwai.act", act_request)
+                    act_response = act(self.client, player_index=self.config.player_index, action=action)
                     event["act_response"] = act_response
                 else:
                     event["act_response"] = {"ok": False, "reason": "blocked_by_constraints"}
@@ -66,11 +60,6 @@ class ControllerLoop:
             self._log_event("loop", event)
             step += 1
             time.sleep(self.config.loop_seconds)
-
-    def _command_json(self, command_name: str, payload: dict[str, Any]) -> dict[str, Any]:
-        encoded = encode_json_base64(payload)
-        raw = self.client.command(f"/{command_name} {encoded}")
-        return parse_rcon_json(raw)
 
     def _log_event(self, event_type: str, payload: dict[str, Any]) -> None:
         line = {"ts": time.time(), "event_type": event_type, "payload": payload}

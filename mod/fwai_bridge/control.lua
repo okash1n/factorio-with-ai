@@ -2,6 +2,16 @@ local BOT_NAME = "fwai-bot"
 local MOD_VERSION = "0.1.0"
 
 local BASE64_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+local DIRECTION_BY_NAME = {
+  north = defines.direction.north,
+  east = defines.direction.east,
+  south = defines.direction.south,
+  west = defines.direction.west,
+  northeast = defines.direction.northeast,
+  southeast = defines.direction.southeast,
+  southwest = defines.direction.southwest,
+  northwest = defines.direction.northwest
+}
 
 local function b64decode(data)
   data = string.gsub(data or "", "[^" .. BASE64_ALPHABET .. "=]", "")
@@ -81,9 +91,22 @@ local function inventory_snapshot(inventory, max_entries)
     return {}
   end
 
+  local aggregated = {}
+  for index = 1, #inventory do
+    local stack = inventory[index]
+    if stack and stack.valid_for_read then
+      local current = aggregated[stack.name]
+      if current then
+        current.count = current.count + stack.count
+      else
+        aggregated[stack.name] = {name = stack.name, count = stack.count}
+      end
+    end
+  end
+
   local entries = {}
-  for name, count in pairs(inventory.get_contents()) do
-    entries[#entries + 1] = {name = name, count = count}
+  for _, entry in pairs(aggregated) do
+    entries[#entries + 1] = entry
   end
   table.sort(entries, function(a, b) return a.name < b.name end)
 
@@ -95,6 +118,117 @@ local function inventory_snapshot(inventory, max_entries)
   return out
 end
 
+local function distance(a, b)
+  if not (a and b) then
+    return math.huge
+  end
+  local ax = tonumber(a.x)
+  local ay = tonumber(a.y)
+  local bx = tonumber(b.x)
+  local by = tonumber(b.y)
+  if not (ax and ay and bx and by) then
+    return math.huge
+  end
+  return math.sqrt((ax - bx) ^ 2 + (ay - by) ^ 2)
+end
+
+local function normalize_count(value, default_value)
+  local count = tonumber(value)
+  if not count then
+    return default_value
+  end
+  count = math.floor(count)
+  if count < 1 then
+    return nil
+  end
+  return count
+end
+
+local function normalize_direction(value)
+  if type(value) == "number" then
+    return math.floor(value)
+  end
+  if type(value) == "string" then
+    return DIRECTION_BY_NAME[string.lower(value)] or defines.direction.north
+  end
+  return defines.direction.north
+end
+
+local function get_bot_inventory(bot)
+  if not (bot and bot.valid) then
+    return nil
+  end
+  return bot.get_inventory(defines.inventory.spider_trunk)
+end
+
+local function get_entity_main_inventory(entity)
+  if not (entity and entity.valid) then
+    return nil
+  end
+  if entity.type == "container" or entity.type == "logistic-container" then
+    return entity.get_inventory(defines.inventory.chest)
+  end
+  if entity.type == "car" then
+    return entity.get_inventory(defines.inventory.car_trunk)
+  end
+  if entity.type == "spider-vehicle" then
+    return entity.get_inventory(defines.inventory.spider_trunk)
+  end
+  if entity.type == "construction-robot" or entity.type == "logistic-robot" then
+    return entity.get_inventory(defines.inventory.robot_cargo)
+  end
+  return nil
+end
+
+local function get_entity_input_inventory(entity)
+  if not (entity and entity.valid) then
+    return nil
+  end
+  if entity.type == "furnace" then
+    return entity.get_inventory(defines.inventory.furnace_source)
+  end
+  if entity.type == "assembling-machine" then
+    return entity.get_inventory(defines.inventory.crafter_input)
+  end
+  if entity.type == "lab" then
+    return entity.get_inventory(defines.inventory.lab_input)
+  end
+  return get_entity_main_inventory(entity)
+end
+
+local function get_entity_output_inventory(entity)
+  if not (entity and entity.valid) then
+    return nil
+  end
+  local output_inventory = entity.get_output_inventory and entity.get_output_inventory() or nil
+  if output_inventory and output_inventory.valid then
+    return output_inventory
+  end
+  return get_entity_main_inventory(entity)
+end
+
+local function collect_entity_inventories(entity)
+  local inventories = {}
+  local main_inventory = get_entity_main_inventory(entity)
+  local input_inventory = get_entity_input_inventory(entity)
+  local output_inventory = get_entity_output_inventory(entity)
+
+  if main_inventory and main_inventory.valid then
+    inventories.main = inventory_snapshot(main_inventory, 32)
+  end
+  if input_inventory and input_inventory.valid and input_inventory ~= main_inventory then
+    inventories.input = inventory_snapshot(input_inventory, 32)
+  end
+  if output_inventory and output_inventory.valid and output_inventory ~= main_inventory and output_inventory ~= input_inventory then
+    inventories.output = inventory_snapshot(output_inventory, 32)
+  end
+
+  if next(inventories) then
+    return inventories
+  end
+  return nil
+end
+
 local function serialize_entity(entity)
   local serialized = {
     unit_number = entity.unit_number,
@@ -102,11 +236,18 @@ local function serialize_entity(entity)
     type = entity.type,
     position = {x = entity.position.x, y = entity.position.y}
   }
+  if entity.force then
+    serialized.force = entity.force.name
+  end
   if entity.health then
     serialized.health = entity.health
   end
   if entity.type == "resource" and entity.amount then
     serialized.amount = entity.amount
+  end
+  local inventories = collect_entity_inventories(entity)
+  if inventories then
+    serialized.inventories = inventories
   end
   return serialized
 end
@@ -184,20 +325,30 @@ local function bot_snapshot(bot)
     name = bot.name,
     type = bot.type,
     position = {x = bot.position.x, y = bot.position.y},
-    health = bot.health
+    health = bot.health,
+    inventory = inventory_snapshot(get_bot_inventory(bot), 64)
   }
 end
 
 local function collect_entities(surface, center, radius, max_entities)
   local entities = surface.find_entities_filtered{position = center, radius = radius}
-  local out = {}
-  local limit = math.max(1, tonumber(max_entities) or 64)
+  local ranked = {}
   for _, entity in pairs(entities) do
     if entity.valid then
-      out[#out + 1] = serialize_entity(entity)
-      if #out >= limit then
-        break
-      end
+      ranked[#ranked + 1] = {
+        entity = entity,
+        distance = distance(center, entity.position)
+      }
+    end
+  end
+  table.sort(ranked, function(a, b) return a.distance < b.distance end)
+
+  local out = {}
+  local limit = math.max(1, tonumber(max_entities) or 64)
+  for _, ranked_entity in pairs(ranked) do
+    out[#out + 1] = serialize_entity(ranked_entity.entity)
+    if #out >= limit then
+      break
     end
   end
   return out
@@ -269,6 +420,7 @@ local function handle_observe(command)
     player = {
       index = player.index,
       name = player.name,
+      connected = player.connected,
       position = {x = player.position.x, y = player.position.y},
       surface = player.surface.name,
       inventory = inventory_snapshot(inventory, 64)
@@ -305,6 +457,65 @@ local function parse_action(request)
   return request
 end
 
+local function resolve_place_entity_name(item_name, params)
+  local explicit_name = params.name or params.entity_name
+  if type(explicit_name) == "string" and explicit_name ~= "" then
+    return explicit_name
+  end
+  local item_prototype = game.item_prototypes[item_name]
+  if not item_prototype then
+    return nil, "item_prototype_not_found"
+  end
+  if not item_prototype.place_result then
+    return nil, "item_not_placeable"
+  end
+  return item_prototype.place_result.name
+end
+
+local function find_target_entity(bot, action)
+  if not (bot and bot.valid) then
+    return nil
+  end
+
+  local params = action.params or {}
+  local target_unit_number = tonumber(params.target_unit_number or action.target_unit_number)
+  local target_x = tonumber(params.x or action.x)
+  local target_y = tonumber(params.y or action.y)
+  local search_radius = tonumber(params.search_radius) or 8
+  local candidates = bot.surface.find_entities_filtered{
+    position = bot.position,
+    radius = search_radius
+  }
+
+  if target_unit_number then
+    for _, entity in pairs(candidates) do
+      if entity.valid and entity.unit_number == target_unit_number then
+        return entity
+      end
+    end
+  end
+
+  if target_x and target_y then
+    local best_entity = nil
+    local best_distance = math.huge
+    local target_position = {x = target_x, y = target_y}
+    for _, entity in pairs(candidates) do
+      if entity.valid then
+        local current_distance = distance(entity.position, target_position)
+        if current_distance < best_distance then
+          best_distance = current_distance
+          best_entity = entity
+        end
+      end
+    end
+    if best_distance <= 0.75 then
+      return best_entity
+    end
+  end
+
+  return nil
+end
+
 local function action_move(bot, action)
   if not (bot and bot.valid) then
     return {ok = false, status = "failed", reason = "bot_not_found"}
@@ -326,6 +537,179 @@ local function action_move(bot, action)
   }
 end
 
+local function action_place(bot, action)
+  if not (bot and bot.valid) then
+    return {ok = false, status = "failed", reason = "bot_not_found"}
+  end
+
+  local params = action.params or {}
+  local item_name = params.item or params.item_name
+  local x = tonumber(params.x or action.x)
+  local y = tonumber(params.y or action.y)
+  if type(item_name) ~= "string" or item_name == "" then
+    return {ok = false, status = "failed", reason = "item_name_missing"}
+  end
+  if not (x and y) then
+    return {ok = false, status = "failed", reason = "invalid_target"}
+  end
+
+  local bot_inventory = get_bot_inventory(bot)
+  if not (bot_inventory and bot_inventory.valid) then
+    return {ok = false, status = "failed", reason = "bot_inventory_missing"}
+  end
+  if bot_inventory.get_item_count(item_name) < 1 then
+    return {ok = false, status = "failed", reason = "bot_inventory_missing_item"}
+  end
+
+  local entity_name, entity_error = resolve_place_entity_name(item_name, params)
+  if not entity_name then
+    return {ok = false, status = "failed", reason = entity_error}
+  end
+
+  local target_position = {x = x, y = y}
+  local direction = normalize_direction(params.direction)
+  if not bot.surface.can_place_entity{
+    name = entity_name,
+    position = target_position,
+    direction = direction,
+    force = bot.force
+  } then
+    return {ok = false, status = "failed", reason = "cannot_place_entity"}
+  end
+
+  local removed = bot_inventory.remove({name = item_name, count = 1})
+  if removed ~= 1 then
+    return {ok = false, status = "failed", reason = "bot_inventory_missing_item"}
+  end
+
+  local created = bot.surface.create_entity{
+    name = entity_name,
+    position = target_position,
+    direction = direction,
+    force = bot.force,
+    create_build_effect_smoke = false
+  }
+  if not (created and created.valid) then
+    bot_inventory.insert({name = item_name, count = 1})
+    return {ok = false, status = "failed", reason = "create_entity_failed"}
+  end
+
+  return {
+    ok = true,
+    status = "done",
+    reason = "placed",
+    count = 1,
+    placed_entity = serialize_entity(created)
+  }
+end
+
+local function action_insert(bot, action)
+  if not (bot and bot.valid) then
+    return {ok = false, status = "failed", reason = "bot_not_found"}
+  end
+
+  local params = action.params or {}
+  local item_name = params.item or params.item_name
+  local count = normalize_count(params.count, 1)
+  if type(item_name) ~= "string" or item_name == "" then
+    return {ok = false, status = "failed", reason = "item_name_missing"}
+  end
+  if not count then
+    return {ok = false, status = "failed", reason = "invalid_count"}
+  end
+
+  local target = find_target_entity(bot, action)
+  if not (target and target.valid) then
+    return {ok = false, status = "failed", reason = "target_entity_not_found"}
+  end
+
+  local bot_inventory = get_bot_inventory(bot)
+  if not (bot_inventory and bot_inventory.valid) then
+    return {ok = false, status = "failed", reason = "bot_inventory_missing"}
+  end
+  if bot_inventory.get_item_count(item_name) < count then
+    return {ok = false, status = "failed", reason = "bot_inventory_missing_item"}
+  end
+
+  local target_inventory = get_entity_input_inventory(target)
+  if not (target_inventory and target_inventory.valid) then
+    return {ok = false, status = "failed", reason = "target_inventory_unavailable"}
+  end
+
+  local removed = bot_inventory.remove({name = item_name, count = count})
+  if removed < 1 then
+    return {ok = false, status = "failed", reason = "bot_inventory_missing_item"}
+  end
+
+  local inserted = target_inventory.insert({name = item_name, count = removed})
+  if inserted < removed then
+    bot_inventory.insert({name = item_name, count = removed - inserted})
+  end
+  if inserted < 1 then
+    return {ok = false, status = "failed", reason = "target_inventory_rejected"}
+  end
+
+  return {
+    ok = true,
+    status = "done",
+    reason = "inserted",
+    count = inserted,
+    target = serialize_entity(target)
+  }
+end
+
+local function action_take(bot, action)
+  if not (bot and bot.valid) then
+    return {ok = false, status = "failed", reason = "bot_not_found"}
+  end
+
+  local params = action.params or {}
+  local item_name = params.item or params.item_name
+  local count = normalize_count(params.count, 1)
+  if type(item_name) ~= "string" or item_name == "" then
+    return {ok = false, status = "failed", reason = "item_name_missing"}
+  end
+  if not count then
+    return {ok = false, status = "failed", reason = "invalid_count"}
+  end
+
+  local target = find_target_entity(bot, action)
+  if not (target and target.valid) then
+    return {ok = false, status = "failed", reason = "target_entity_not_found"}
+  end
+
+  local bot_inventory = get_bot_inventory(bot)
+  if not (bot_inventory and bot_inventory.valid) then
+    return {ok = false, status = "failed", reason = "bot_inventory_missing"}
+  end
+
+  local target_inventory = get_entity_output_inventory(target)
+  if not (target_inventory and target_inventory.valid) then
+    return {ok = false, status = "failed", reason = "target_inventory_unavailable"}
+  end
+
+  local removed = target_inventory.remove({name = item_name, count = count})
+  if removed < 1 then
+    return {ok = false, status = "failed", reason = "target_inventory_missing_item"}
+  end
+
+  local inserted = bot_inventory.insert({name = item_name, count = removed})
+  if inserted < removed then
+    target_inventory.insert({name = item_name, count = removed - inserted})
+  end
+  if inserted < 1 then
+    return {ok = false, status = "failed", reason = "bot_inventory_full"}
+  end
+
+  return {
+    ok = true,
+    status = "done",
+    reason = "taken",
+    count = inserted,
+    target = serialize_entity(target)
+  }
+end
+
 local function handle_act(command)
   local request = decode_request(command.parameter)
   local player = get_player(request.player_index)
@@ -343,6 +727,12 @@ local function handle_act(command)
     result = {ok = true, status = "done", reason = "noop"}
   elseif action_type == "move" then
     result = action_move(bot, action)
+  elseif action_type == "place" then
+    result = action_place(bot, action)
+  elseif action_type == "insert" then
+    result = action_insert(bot, action)
+  elseif action_type == "take" then
+    result = action_take(bot, action)
   elseif action_type == "spawn_bot" then
     bot = ensure_bot(player)
     result = {ok = bot ~= nil, status = "done", reason = "bot_ready"}
