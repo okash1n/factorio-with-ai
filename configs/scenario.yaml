@@ -1,0 +1,5 @@
+seed: 424242
+enemy_mode: normal
+human_intervention: observe_only
+mvp_goal: orbit_reach_and_stay
+final_goal: solar_system_edge_victory

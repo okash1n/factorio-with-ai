@@ -1,0 +1,13 @@
+{
+  "name": "fwai_bridge",
+  "version": "0.1.0",
+  "title": "FWAI Bridge",
+  "author": "okash1n",
+  "factorio_version": "2.0",
+  "dependencies": [
+    "base >= 2.0.0",
+    "elevated-rails",
+    "quality",
+    "space-age"
+  ]
+}
