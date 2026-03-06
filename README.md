@@ -1,63 +1,99 @@
 # factorio-with-ai
 
-Local automation scaffold for controlling Factorio (Space Age) via Codex + RCON.
+Codex から Factorio: Space Age を操作して、どこまで高度な自動化でクリアに近づけるかを試すリポジトリです。  
+単に AI に遊ばせるだけではなく、観測、制約、行動実行、記事化まで含めて、再現できる形で積み上げていくことを目的にしています。
 
-## Scope
-- Space Age enabled (`base`, `elevated-rails`, `quality`, `space-age`)
-- Only one non-official mod: `fwai_bridge`
-- Local headless server managed from this repository
+## この企画について
 
-## Prerequisites
-- macOS + Steam Factorio installed
-- Python 3.11+
+この取り組みでは、「AI がすごい」で終わらせず、ゲーム内のルールを守ったままどこまで自動化できるかを詰めていきます。  
+そのために、Factorio の Mod、Python controller、RCON、ローカル Kanban、記事運用をこのリポジトリでまとめて管理しています。
 
-Default Steam Factorio binary path:
-`~/Library/Application Support/Steam/steamapps/common/Factorio/factorio.app/Contents/MacOS/factorio`
+現時点の基本方針は次の通りです。
 
-## Quick Start
-1. Start server:
+- 対象は Factorio: Space Age
+- 非公式 Mod はこのリポジトリで管理する『fwai_bridge』のみ
+- プレイヤー inventory は使わず、Bot 自身の inventory とゲーム内 entity の inventory を使う
+- 届かない位置への遠隔操作はしない
+- 観測者がサーバーへ入っていない間は action を流さない
+
+## リンク
+
+- リポジトリ
+  - https://github.com/okash1n/factorio-with-ai
+- note マガジン
+  - https://note.com/okash1n/m/m9def00095cdf
+
+## スコープ
+
+- Space Age 有効 『base』『elevated-rails』『quality』『space-age』
+- ローカルの headless server をこのリポジトリから管理
+- Mod は `mod/fwai_bridge` を開発し、サーバーとクライアントへ同期
+- controller は Python から RCON 経由でゲームへ action を送る
+
+## 前提環境
+
+- macOS
+- Steam 版 Factorio
+- Python 3.11 以上
+
+Steam 版 Factorio の既定バイナリは次です。
+
+```text
+~/Library/Application Support/Steam/steamapps/common/Factorio/factorio.app/Contents/MacOS/factorio
+```
+
+## クイックスタート
+
+1. サーバーを起動する
+
 ```bash
 ./scripts/start_server.sh
 ```
 
-2. In another terminal, run controller:
+2. 別ターミナルで controller を起動する
+
 ```bash
 ./scripts/run_controller.sh
 ```
 
-3. Optional: connect local client:
+3. 必要ならローカル GUI クライアントで接続する
+
 ```bash
 ./scripts/start_client_mac.sh
 ```
 
-`start_client_mac.sh` automatically prepares a dedicated client runtime under `.runtime/client/` and installs `fwai_bridge` there, so mod-portal download is not required.
+『start_client_mac.sh』は `.runtime/client/` 配下に専用 client runtime を作り、そこへ『fwai_bridge』を入れます。  
+そのため Mod Portal に上がっていない状態でもローカル接続できます。
 
-If you want to use the default user profile mods directory instead, run:
+既定のユーザープロファイル側の mods ディレクトリを使いたい場合は、次を実行します。
 
 ```bash
 ./scripts/install_client_mod.sh
 ```
 
-`install_client_mod.sh` uses symlink mode by default:
-- `~/Library/Application Support/Factorio/mods/fwai_bridge` points to `mod/fwai_bridge` in this repo.
-- Mod edits in this repo are reflected in your local client mod directory immediately (restart client to reload mods).
+『install_client_mod.sh』は既定で symlink 方式を使います。
 
-For remote Windows client distribution:
+- `~/Library/Application Support/Factorio/mods/fwai_bridge` をこのリポジトリの `mod/fwai_bridge` へ向ける
+- このリポジトリの Mod 更新がローカル client 側へそのまま反映される
+- 反映には client 再起動が必要
+
+Windows 観測クライアントへ配る場合は、次を使います。
 
 ```bash
 ./scripts/export_mod_bundle.sh
 ```
 
-Copy the generated zip in `dist/` to `%APPDATA%\Factorio\mods\` on Windows.
+生成された `dist/` 配下の zip を `%APPDATA%\\Factorio\\mods\\` へ配置してください。
 
-## launchd (Background)
-Install and run the server as a user LaunchAgent:
+## launchd での常駐実行
+
+サーバーを user LaunchAgent として入れて起動する場合は次です。
 
 ```bash
 ./scripts/launchd_server.sh start
 ```
 
-Useful commands:
+よく使うコマンド:
 
 ```bash
 ./scripts/launchd_server.sh status
@@ -66,31 +102,35 @@ Useful commands:
 ./scripts/launchd_server.sh uninstall
 ```
 
-## Local Board
-Run the local Kanban UI:
+## ローカル Kanban
+
+作業面としてローカルの Kanban UI を用意しています。
 
 ```bash
 ./scripts/start_board.sh
 ```
 
-Default URL:
-`http://127.0.0.1:8127`
+既定 URL:
 
-Notes:
-- Board layout is stored in `board/board.json`
-- Task cards are stored in `board/cards/00001.md` style Markdown files
-- The browser UI supports drag-and-drop between columns
-- Card edits are saved back to the repository JSON via the local Python server
-- Card ID is numeric in the UI, and semantic keys are stored inside each card Markdown file
-- `key:` may be blank when you add a card; the server fills it on save without renaming the file
+```text
+http://127.0.0.1:8127
+```
 
-Run the board via launchd:
+構成は次の通りです。
+
+- board レイアウトは `board/board.json`
+- task の実体は `board/cards/00001.md` 形式の Markdown
+- browser UI から列移動、編集、保存ができる
+- UI 上の card ID は数字で表示される
+- `key:` は空欄でもよく、保存時に server 側で補完する
+
+launchd で board を動かす場合は次です。
 
 ```bash
 ./scripts/launchd_board.sh start
 ```
 
-Useful commands:
+よく使うコマンド:
 
 ```bash
 ./scripts/launchd_board.sh status
@@ -99,16 +139,18 @@ Useful commands:
 ./scripts/launchd_board.sh uninstall
 ```
 
-## Environment Variables
-- `FACTORIO_BIN`: override Factorio binary path
-- `RCON_PORT`: default `27015`
-- `RCON_PASSWORD`: default `fwai-local`
-- `GAME_PORT`: default `34197`
-- `LOOP_SECONDS`: controller loop sleep interval (default `1.0`)
-- `ITERATIONS`: loop count (default `0` means infinite)
+## 環境変数
 
-## Notes
-- Server runtime files are isolated under `.runtime/server/`.
-- Client runtime files are isolated under `.runtime/client/`.
-- `scripts/verify_modset.sh` validates enabled mod set.
-- LaunchAgent label default: `com.okash1n.fwai.server`.
+- `FACTORIO_BIN`: Factorio バイナリパスを上書きする
+- `RCON_PORT`: 既定 `27015`
+- `RCON_PASSWORD`: 既定 `fwai-local`
+- `GAME_PORT`: 既定 `34197`
+- `LOOP_SECONDS`: controller loop の待機秒数。既定 `1.0`
+- `ITERATIONS`: loop 回数。既定 `0` で無限
+
+## 補足
+
+- サーバー runtime は `.runtime/server/` に分離する
+- client runtime は `.runtime/client/` に分離する
+- `scripts/verify_modset.sh` で有効 Mod セットを検証できる
+- 既定の LaunchAgent label は `com.okash1n.fwai.server`
