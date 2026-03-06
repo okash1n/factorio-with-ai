@@ -18,5 +18,6 @@ notes/
 - 画像は `images/` に配置
 - 記事内の画像参照は相対パス（例: `![caption](./images/xxx.png)`）
 - 見出しレベルは `###` まで
+- リード文の直後に `## 固定リンク` を置く
 - 新規記事は `scripts/new_note_article.sh --slug ... --title ...` を優先
 - Factorio の画面取得は `scripts/capture_factorio_window.sh --article-dir ... --alt ...` を優先

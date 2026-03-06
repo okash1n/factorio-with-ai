@@ -9,6 +9,13 @@
 - 
 - 
 
+## 固定リンク
+
+- リポジトリ
+  - https://github.com/okash1n/factorio-with-ai
+- 記事まとめ
+  - https://note.com/okash1n/m/m9def00095cdf
+
 ## 今回の結論
 
 まず結論を短く整理します。
